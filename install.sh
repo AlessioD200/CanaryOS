@@ -20,48 +20,45 @@ grep -v '^#' packages.txt | xargs apt install -y
 
 # SwayNC apart (zit niet in Debian)
 # ==========================================
-# SWAYNC INSTALLATIE (ROBUUSTE VERSIE)
+# SWAYNC INSTALLATIE (HYBRIDE METHODE)
 # ==========================================
-if ! command -v swaync &> /dev/null; then
-    echo "📥 SwayNC wordt geïnstalleerd..."
+
+# 1. Probeer eerst de makkelijke manier (APT)
+if apt-cache show sway-notification-center &> /dev/null; then
+    echo "📥 SwayNC gevonden in de winkel! Installeren via apt..."
+    apt install -y sway-notification-center
+
+# 2. Als dat niet lukt, doe de handmatige GitHub manier
+elif ! command -v swaync &> /dev/null; then
+    echo "⚠️  SwayNC niet in apt. We downloaden hem handmatig..."
     
-    # 1. Installeer jq (nodig om GitHub goed uit te lezen)
+    # Installeer jq en curl voor de download
     apt install -y jq curl
 
-    # 2. Oude bestanden opruimen
-    rm -f swaync.deb
-
-    # 3. Probeer de allerlaatste versie te vinden via API en jq
-    echo "   ...zoeken naar nieuwste versie..."
+    # Zoek de link via de API
     DOWNLOAD_URL=$(curl -s https://api.github.com/repos/ErikReider/SwayNotificationCenter/releases/latest | jq -r '.assets[] | select(.name | endswith("amd64.deb")) | .browser_download_url')
 
-    # 4. HET VEILIGHEIDSNET (Fallback)
-    # Als de API faalt (leeg is), gebruik dan deze vaste link (versie 0.10.1 werkt altijd)
+    # Fallback link als API faalt
     if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-        echo "⚠️  API check mislukt. We gebruiken de vaste fallback link."
         DOWNLOAD_URL="https://github.com/ErikReider/SwayNotificationCenter/releases/download/v0.10.1/swaync_0.10.1_amd64.deb"
     fi
 
     echo "📥 Downloaden van: $DOWNLOAD_URL"
-    
-    # 5. Downloaden
+    rm -f swaync.deb
     curl -L -o swaync.deb "$DOWNLOAD_URL"
 
-    # 6. Check en Installeer
     if dpkg-deb -I swaync.deb &> /dev/null; then
-        echo "✅ Bestand is goed. Installeren..."
         apt install -y ./swaync.deb
+        echo "✅ Handmatige installatie gelukt."
     else
-        echo "❌ FOUT: SwayNC download is corrupt."
-        echo "   Dit is waarschijnlijk een netwerkprobleem of een kapotte link."
+        echo "❌ FOUT: Download mislukt."
     fi
-
-    # 7. Opruimen
     rm -f swaync.deb
 
 else
     echo "✅ SwayNC is al geïnstalleerd."
 fi
+
 # ==========================================
 # 2. SYSTEEM TOOLS (Scripts)
 echo "🛠  Scripts plaatsen in /usr/local/bin..."
