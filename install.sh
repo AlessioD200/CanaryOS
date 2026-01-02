@@ -19,12 +19,30 @@ apt update -qq
 grep -v '^#' packages.txt | xargs apt install -y
 
 # SwayNC apart (zit niet in Debian)
+# SwayNC (Notificaties) - FIX MET CURL
 if ! command -v swaync &> /dev/null; then
-    wget -qO swaync.deb https://github.com/ErikReider/SwayNotificationCenter/releases/download/v0.10.1/swaync_0.10.1_amd64.deb
-    apt install -y ./swaync.deb
-    rm swaync.deb
+    echo "📥 SwayNC wordt gedownload..."
+    
+    # 1. Verwijder oude rommel
+    rm -f swaync.deb
+    
+    # 2. Download met curl en volg redirects (-L)
+    # Dit is veiliger dan wget voor GitHub links
+    curl -L -o swaync.deb https://github.com/ErikReider/SwayNotificationCenter/releases/download/v0.12.3/swaync_0.12.3_amd64.deb
+    
+    # 3. Check of het bestand groter is dan 0 bytes
+    if [ -s swaync.deb ]; then
+        echo "✅ Download gelukt, installeren..."
+        apt install -y ./swaync.deb
+    else
+        echo "❌ Fout: SwayNC download mislukt (bestand is leeg)."
+    fi
+    
+    # 4. Opruimen
+    rm -f swaync.deb
+else
+    echo "✅ SwayNC is al geïnstalleerd."
 fi
-
 # 2. SYSTEEM TOOLS (Scripts)
 echo "🛠  Scripts plaatsen in /usr/local/bin..."
 cp bin/canary-* /usr/local/bin/
