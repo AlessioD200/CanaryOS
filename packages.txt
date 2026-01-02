@@ -1,4 +1,4 @@
-# Bureaublad omgeving
+# Desktop Core
 labwc
 waybar
 pcmanfm-qt
@@ -6,22 +6,24 @@ lxpolkit
 xwayland
 libxcb-cursor0
 
-# Systeem tools
+# Audio & Tools (Nodig voor je config!)
+pamixer
+foot
+brightnessctl
 psmisc
 curl
+wget
 git
 network-manager
 pulseaudio
 pavucontrol
-brightnessctl
-fonts-font-awesome
 
-# Python (voor jouw tools)
+# Python (Voor je launcher)
 python3-tk
 python3-pil
 python3-pil.imagetk
 
-# Applicaties
+# Apps
 firefox-esr
 screenfetch
 htop
