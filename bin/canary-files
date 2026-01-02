@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+import gi
+import os
+import subprocess
+import shutil
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, GdkPixbuf, Gio, GLib, Gdk
+
+# --- CSS STYLING ---
+css_provider = Gtk.CssProvider()
+css = b"""
+    window { background-color: #1e1e2e; color: #cdd6f4; }
+    iconview { background-color: #1e1e2e; color: #cdd6f4; }
+    iconview:selected { background-color: #89b4fa; color: #1e1e2e; }
+    button { background-color: #313244; color: white; border: none; padding: 5px; }
+    entry { background-color: #313244; color: white; border: none; }
+    menu { background-color: #313244; color: white; }
+    menuitem:hover { background-color: #89b4fa; color: #1e1e2e; }
+"""
+css_provider.load_from_data(css)
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+)
+
+class CanaryFiles(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Canary Files")
+        self.set_default_size(900, 600)
+
+        self.current_path = os.path.expanduser("~")
+        self.clipboard_path = None # Hier bewaren we wat we kopiëren
+        self.clipboard_mode = None # 'copy' of 'cut' (voor later)
+
+        # Hoofd layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.add(vbox)
+
+        # --- TOOLBAR ---
+        toolbar = Gtk.Box(spacing=10)
+        toolbar.set_property("margin", 10)
+        vbox.pack_start(toolbar, False, False, 0)
+
+        btn_up = Gtk.Button.new_from_icon_name("go-up", Gtk.IconSize.BUTTON)
+        btn_up.connect("clicked", self.on_up_clicked)
+        toolbar.pack_start(btn_up, False, False, 0)
+
+        btn_refresh = Gtk.Button.new_from_icon_name("view-refresh", Gtk.IconSize.BUTTON)
+        btn_refresh.connect("clicked", lambda x: self.load_folder(self.current_path))
+        toolbar.pack_start(btn_refresh, False, False, 0)
+
+        self.path_entry = Gtk.Entry()
+        self.path_entry.connect("activate", self.on_path_entered)
+        toolbar.pack_start(self.path_entry, True, True, 0)
+
+        # --- GRID VIEW ---
+        scrolled = Gtk.ScrolledWindow()
+        vbox.pack_start(scrolled, True, True, 0)
+
+        # Model: [0:Pixbuf, 1:Naam, 2:VolledigPad, 3:IsMap]
+        self.liststore = Gtk.ListStore(GdkPixbuf.Pixbuf, str, str, bool)
+        
+        self.iconview = Gtk.IconView.new_with_model(self.liststore)
+        self.iconview.set_text_column(1)
+        self.iconview.set_pixbuf_column(0)
+        self.iconview.set_item_width(100)
+        
+        # Events koppelen
+        self.iconview.connect("item-activated", self.on_item_clicked) # Dubbelklik
+        self.iconview.connect("button-press-event", self.on_mouse_click) # Rechtermuisknop
+
+        scrolled.add(self.iconview)
+
+        self.load_folder(self.current_path)
+
+    def load_folder(self, path):
+        try:
+            self.liststore.clear()
+            self.current_path = path
+            self.path_entry.set_text(path)
+            
+            items = sorted(os.listdir(path))
+            icon_theme = Gtk.IconTheme.get_default()
+            folder_icon = icon_theme.load_icon("folder", 64, 0)
+            file_icon = icon_theme.load_icon("text-x-generic", 64, 0)
+
+            for item in items:
+                if item.startswith("."): continue
+                full_path = os.path.join(path, item)
+                
+                icon = file_icon
+                is_dir = os.path.isdir(full_path)
+                
+                if is_dir:
+                    icon = folder_icon
+                elif item.endswith((".png", ".jpg", ".jpeg")):
+                    try: icon = icon_theme.load_icon("image-x-generic", 64, 0)
+                    except: pass
+                
+                self.liststore.append([icon, item, full_path, is_dir])
+        except Exception as e:
+            print(f"Error: {e}")
+
+    # --- INPUT HANDLERS ---
+    def on_item_clicked(self, widget, path):
+        treeiter = self.liststore.get_iter(path)
+        full_path = self.liststore[treeiter][2]
+        is_folder = self.liststore[treeiter][3]
+
+        if is_folder:
+            self.load_folder(full_path)
+        else:
+            # --- CUSTOM LOGICA VOOR CANARYOS ---
+            # Hier bepalen we zelf welk programma we gebruiken
+            
+            # 1. Is het een plaatje? Gebruik IMV
+            if full_path.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
+                print(f"Openen met IMV: {full_path}")
+                subprocess.Popen(["eog", full_path])
+                
+            # 2. Is het tekst/code? Gebruik Mousepad (of nano/geany)
+            elif full_path.lower().endswith((".txt", ".py", ".sh", ".json", ".xml", ".conf", ".ini")):
+                print(f"Openen met Editor: {full_path}")
+                subprocess.Popen(["mousepad", full_path])
+                
+            # 3. Voor de rest: laat xdg-open het maar uitzoeken
+            else:
+                print(f"Overlaten aan systeem: {full_path}")
+                subprocess.Popen(["xdg-open", full_path])
+
+    def on_up_clicked(self, widget):
+        self.load_folder(os.path.dirname(self.current_path))
+
+    def on_path_entered(self, widget):
+        path = self.path_entry.get_text()
+        if os.path.isdir(path): self.load_folder(path)
+
+    # --- CONTEXT MENU (Rechtermuisknop) ---
+    def on_mouse_click(self, widget, event):
+        if event.button == 3: # 3 = Rechtermuisknop
+            # Kijk waar er geklikt is
+            path_at_pos = widget.get_path_at_pos(int(event.x), int(event.y))
+            
+            menu = Gtk.Menu()
+            
+            if path_at_pos:
+                # Er is op een item geklikt
+                widget.select_path(path_at_pos)
+                treeiter = self.liststore.get_iter(path_at_pos)
+                selected_file = self.liststore[treeiter][2]
+                
+                # Openen
+                item_open = Gtk.MenuItem(label="Openen")
+                item_open.connect("activate", lambda x: self.on_item_clicked(widget, path_at_pos))
+                menu.append(item_open)
+                
+                # Kopiëren
+                item_copy = Gtk.MenuItem(label="Kopiëren")
+                item_copy.connect("activate", lambda x: self.action_copy(selected_file))
+                menu.append(item_copy)
+                
+                # Verwijderen
+                item_del = Gtk.MenuItem(label="Verwijderen")
+                item_del.connect("activate", lambda x: self.action_delete(selected_file))
+                menu.append(item_del)
+            
+            else:
+                # Er is op de achtergrond geklikt
+                item_new = Gtk.MenuItem(label="Nieuwe Map")
+                item_new.connect("activate", self.action_new_folder)
+                menu.append(item_new)
+                
+                # Plakken (alleen als er iets op klembord staat)
+                if self.clipboard_path:
+                    item_paste = Gtk.MenuItem(label="Plakken")
+                    item_paste.connect("activate", self.action_paste)
+                    menu.append(item_paste)
+
+            menu.show_all()
+            menu.popup(None, None, None, None, event.button, event.time)
+            return True # Event afgehandeld
+
+    # --- ACTIES ---
+    def action_copy(self, path):
+        self.clipboard_path = path
+        print(f"Gekopieerd: {path}")
+
+    def action_paste(self, widget):
+        if not self.clipboard_path or not os.path.exists(self.clipboard_path):
+            return
+            
+        filename = os.path.basename(self.clipboard_path)
+        dest = os.path.join(self.current_path, filename)
+        
+        try:
+            if os.path.isdir(self.clipboard_path):
+                shutil.copytree(self.clipboard_path, dest)
+            else:
+                shutil.copy2(self.clipboard_path, dest)
+            self.load_folder(self.current_path)
+        except Exception as e:
+            print(f"Fout bij plakken: {e}")
+
+    def action_delete(self, path):
+        # Bevestigingsdialoog
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text="Zeker weten?",
+        )
+        dialog.format_secondary_text(f"Wil je '{os.path.basename(path)}' echt verwijderen?")
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.OK:
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                self.load_folder(self.current_path)
+            except Exception as e:
+                print(f"Kon niet verwijderen: {e}")
+
+    def action_new_folder(self, widget):
+        # Dialoog voor naam
+        dialog = Gtk.Dialog(title="Nieuwe Map", transient_for=self, flags=0)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        
+        box = dialog.get_content_area()
+        entry = Gtk.Entry()
+        entry.set_text("Nieuwe Map")
+        box.add(entry)
+        dialog.show_all()
+        
+        response = dialog.run()
+        text = entry.get_text()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.OK and text:
+            new_path = os.path.join(self.current_path, text)
+            try:
+                os.mkdir(new_path)
+                self.load_folder(self.current_path)
+            except OSError:
+                print("Map bestaat al of geen rechten")
+
+win = CanaryFiles()
+win.connect("destroy", Gtk.main_quit)
+win.show_all()
+Gtk.main()

@@ -1,0 +1,44 @@
+#!/bin/bash
+STYLE="/home/canary/.config/wofi/style.css"
+
+# Scan forceren (zodat je zeker nieuwe netwerken ziet)
+nmcli device wifi rescan 2>/dev/null
+
+# Haal lijst op. We gebruiken GEEN 'uniq -u' meer, want dat verbergt dubbele netwerken!
+# We sorteren op signaalsterkte (BARS).
+WIFI_LIST=$(nmcli --fields "SSID,SECURITY,BARS" device wifi list | sed 1d | sed 's/  */ /g')
+
+# Als de lijst leeg is, toon een melding in het menu
+if [ -z "$WIFI_LIST" ]; then
+    WIFI_LIST="Geen netwerken gevonden"
+fi
+
+# Start Wofi RECHTSONDER
+# --location bottom_right: Plakt hem in de hoek
+# --x -10: Ietsje van de rechterrand af
+# --y -50: 50 pixels omhoog (zodat hij boven je Waybar zweeft)
+CHOSEN_NETWORK=$(echo -e "$WIFI_LIST" | uniq | wofi --dmenu --prompt "Wifi Netwerken" --location bottom_right --x -10 --y -50 --width 350 --height 400 --style "$STYLE")
+
+# Haal de SSID eruit
+SSID=$(echo "$CHOSEN_NETWORK" | awk -F' ' '{print $1}')
+
+# Stop als er niks gekozen is of als de lijst leeg was
+if [ -z "$SSID" ] || [ "$SSID" = "Geen" ]; then
+    exit 0
+fi
+
+# Verbinden
+notify-send "Wifi" "Verbinden met $SSID..."
+
+# Check of we het netwerk al kennen
+KNOWN=$(nmcli connection show | grep "$SSID")
+
+if [ -n "$KNOWN" ]; then
+    nmcli device wifi connect "$SSID"
+else
+    # Wachtwoord vragen (ook rechtsonder!)
+    PASS=$(wofi --dmenu --password --prompt "Wachtwoord" --location bottom_right --x -10 --y -50 --width 300 --height 100 --style "$STYLE")
+    if [ -n "$PASS" ]; then
+        nmcli device wifi connect "$SSID" password "$PASS"
+    fi
+fi

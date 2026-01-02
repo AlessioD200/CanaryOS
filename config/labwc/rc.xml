@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<labwc_config>
+
+  <core>
+    <decoration>server</decoration>
+    <gap>5</gap>
+    <dragThreshold>5</dragThreshold>
+    <adaptiveSync>no</adaptiveSync>
+    <reuseOutputMode>no</reuseOutputMode>
+    <xwayland enable="yes" />
+  </core>
+
+  <focus>
+    <followMouse>no</followMouse>
+    <raiseOnFocus>no</raiseOnFocus>
+  </focus>
+
+  <theme>
+    <name>CanaryDark</name>
+    <cornerRadius>10</cornerRadius>
+    <font place="ActiveWindow">Sans Bold 11</font>
+    <font place="InactiveWindow">Sans 11</font>
+    <buttonLayout>NLIMC</buttonLayout> 
+  </theme>
+
+  <windowRules>
+    <windowRule identifier="*"><serverDecoration>yes</serverDecoration></windowRule>
+  </windowRules>
+
+  <keyboard>
+    <keybind key="W-Return"><action name="Execute" command="foot" /></keybind>
+    <keybind key="W-q"><action name="Close" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="W-d"><action name="Execute" command="/usr/local/bin/canary-launcher" /></keybind>
+    <keybind key="W-Space"><action name="Execute" command="/usr/local/bin/canary-launcher" /></keybind>
+    
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="pamixer -i 5" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="pamixer -d 5" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="pamixer --toggle-mute" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="brightnessctl s +5%" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="brightnessctl s 5%-" /></keybind>
+  </keyboard>
+
+  <mouse>
+    <context name="title">
+      <mousebind button="Left" action="Press"><action name="Focus" /><action name="Raise" /></mousebind>
+      <mousebind button="Left" action="Drag"><action name="Move" /></mousebind>
+      <mousebind button="Left" action="DoubleClick"><action name="ToggleMaximize" /></mousebind>
+      <mousebind button="Right" action="Press"><action name="ShowMenu" menu="client-menu" /></mousebind>
+    </context>
+    <context name="client">
+    </context>    
+    <context name="root">
+        </context>
+  </mouse>
+</labwc_config>

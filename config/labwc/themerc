@@ -1,0 +1,25 @@
+# CANARY OS WINDOW THEME
+
+# Dikte van de rand om vensters (1 of 2 is modern)
+border.width: 2
+
+# Kleur van het actieve venster (Blauw/Canary stijl)
+window.active.border.color: #89b4fa
+window.active.title.bg.color: #1e1e2e
+window.active.label.text.color: #cdd6f4
+
+# Kleur van inactieve vensters (Grijs/Donker)
+window.inactive.border.color: #45475a
+window.inactive.title.bg.color: #1e1e2e
+window.inactive.label.text.color: #585b70
+
+# De knoppen bovenin (Minimalistisch)
+window.button.width: 26
+window.button.hover.bg.color: #89b4fa
+window.button.icon.color: #cdd6f4
+
+# Menu styling (rechtermuisknop menu)
+menu.items.bg.color: #1e1e2e
+menu.items.text.color: #cdd6f4
+menu.items.active.bg.color: #89b4fa
+menu.items.active.text.color: #1e1e2e

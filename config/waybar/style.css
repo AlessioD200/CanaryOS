@@ -1,0 +1,50 @@
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "Sans";
+    font-size: 14px;
+    min-height: 0;
+}
+
+window#waybar {
+    background: rgba(30, 30, 46, 0.95);
+    color: #cdd6f4;
+    border-top: 2px solid #89b4fa;
+}
+
+#custom-launcher {
+    font-size: 20px;
+    padding: 0 15px;
+    color: #89b4fa;
+}
+
+/* TAAKBALK APPS */
+#taskbar button {
+    padding: 0 10px;
+    border-radius: 8px;
+    margin: 4px 2px;
+    background-color: transparent;
+    color: #ffffff;
+    border-bottom: 3px solid transparent;
+}
+
+#taskbar button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Actief venster */
+#taskbar button.active {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-bottom: 3px solid #89b4fa;
+}
+
+/* Geminimaliseerd venster */
+#taskbar button.minimized {
+    opacity: 0.6;
+    border-bottom: 3px solid #fab387;
+}
+
+#custom-quicksettings, #battery, #clock, #tray {
+    padding: 0 10px;
+    background-color: transparent;
+}

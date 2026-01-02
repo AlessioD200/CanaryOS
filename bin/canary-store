@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+import customtkinter as ctk
+import subprocess
+import threading
+import os
+from PIL import Image
+
+# --- CONFIGURATIE ---
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
+BG_COLOR = "#1e1e2e"
+CARD_COLOR = "#313244"
+TEXT_COLOR = "#cdd6f4"
+ACCENT_COLOR = "#89b4fa"
+
+ICON_PATHS = [
+    "/usr/share/icons/hicolor/48x48/apps",
+    "/usr/share/icons/hicolor/64x64/apps",
+    "/usr/share/pixmaps",
+    "/usr/share/icons/Adwaita/48x48/legacy"
+]
+
+# Cache om te voorkomen dat we hetzelfde icoon 10x zoeken
+ICON_CACHE = {}
+
+class IconLoader:
+    @staticmethod
+    def get_icon(pkg_name):
+        if pkg_name in ICON_CACHE:
+            return ICON_CACHE[pkg_name]
+
+        names = [pkg_name, pkg_name.split('-')[0], f"org.gnome.{pkg_name}"]
+        for path in ICON_PATHS:
+            if not os.path.exists(path): continue
+            for name in names:
+                full_path = os.path.join(path, name + ".png")
+                if os.path.exists(full_path):
+                    try:
+                        # Laad en cache het icoon
+                        img = ctk.CTkImage(Image.open(full_path), size=(40, 40))
+                        ICON_CACHE[pkg_name] = img
+                        return img
+                    except: pass
+        
+        ICON_CACHE[pkg_name] = None # Geen icoon gevonden, onthoud dat
+        return None
+
+class AppItem(ctk.CTkFrame):
+    def __init__(self, parent, name, desc, installed, store_ref):
+        super().__init__(parent, fg_color=CARD_COLOR, corner_radius=10)
+        self.store = store_ref
+        self.package_name = name
+        self.pack(fill="x", pady=5, padx=5)
+        
+        self.grid_columnconfigure(1, weight=1)
+
+        # 1. PLAATSHOUDER ICOON (Direct zichtbaar, geen vertraging)
+        self.icon_lbl = ctk.CTkLabel(self, text="📦", font=("Sans", 30))
+        self.icon_lbl.grid(row=0, column=0, rowspan=2, padx=15, pady=10)
+
+        # 2. NAAM EN INFO
+        self.name_lbl = ctk.CTkLabel(self, text=name, font=("Sans", 16, "bold"), text_color=TEXT_COLOR, anchor="w")
+        self.name_lbl.grid(row=0, column=1, sticky="w", pady=(10, 0))
+        
+        short_desc = desc[:80] + '..' if len(desc) > 80 else desc
+        self.desc_lbl = ctk.CTkLabel(self, text=short_desc, font=("Sans", 12), text_color="gray", anchor="w")
+        self.desc_lbl.grid(row=1, column=1, sticky="w", pady=(0, 10))
+
+        # 3. KNOP
+        self.btn = ctk.CTkButton(self, text="", width=100, height=35, font=("Sans", 13, "bold"))
+        self.btn.grid(row=0, column=2, rowspan=2, padx=15)
+        
+        self.update_state(installed)
+        
+        # 4. SCROLL FIX
+        self.bind_recursive(self)
+
+        # 5. ASYNCHROON LADEN (Dit lost het haperen op)
+        # We starten een mini-taakje op de achtergrond om het icoon te zoeken
+        threading.Thread(target=self.load_real_icon, daemon=True).start()
+
+    def load_real_icon(self):
+        # Dit draait op de achtergrond en blokkeert het scrollen niet
+        real_icon = IconLoader.get_icon(self.package_name)
+        if real_icon:
+            # UI updaten mag alleen op de hoofddraad
+            self.after(0, lambda: self.show_icon(real_icon))
+
+    def show_icon(self, icon):
+        if self.winfo_exists():
+            self.icon_lbl.configure(image=icon, text="")
+
+    def bind_recursive(self, widget):
+        widget.bind("<Button-4>", self.store.on_scroll_up)
+        widget.bind("<Button-5>", self.store.on_scroll_down)
+        for child in widget.winfo_children():
+            self.bind_recursive(child)
+
+    def update_state(self, installed):
+        self.is_installed = installed
+        if installed:
+            self.btn.configure(text="Verwijder", fg_color="#e74c3c", hover_color="#c0392b", command=self.uninstall)
+        else:
+            self.btn.configure(text="Installeer", fg_color=ACCENT_COLOR, hover_color="#3498db", command=self.install)
+
+    def install(self):
+        self.store.run_transaction(f"pkexec apt-get install -y {self.package_name}", self)
+
+    def uninstall(self):
+        self.store.run_transaction(f"pkexec apt-get remove -y {self.package_name}", self)
+
+class CanaryStore(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Canary Store")
+        self.geometry("950x700")
+        self.configure(fg_color=BG_COLOR)
+
+        # Header
+        self.header = ctk.CTkFrame(self, fg_color="transparent", height=80)
+        self.header.pack(fill="x", padx=20, pady=20)
+        ctk.CTkLabel(self.header, text="Canary Store", font=("Sans", 28, "bold"), text_color=TEXT_COLOR).pack(side="left")
+
+        # Zoekbalk
+        self.search_entry = ctk.CTkEntry(self.header, placeholder_text="Zoek apps...", width=300, height=40, fg_color=CARD_COLOR, border_width=0, text_color=TEXT_COLOR)
+        self.search_entry.pack(side="right", padx=10)
+        self.search_entry.bind("<Return>", lambda e: self.search())
+        ctk.CTkButton(self.header, text="🔍", width=50, height=40, fg_color=ACCENT_COLOR, command=self.search).pack(side="right")
+
+        # Content Area
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        self.status_bar = ctk.CTkLabel(self, text="Klaar", height=30, fg_color=CARD_COLOR, text_color="gray")
+        self.status_bar.pack(fill="x")
+
+        self.load_featured()
+
+    def on_scroll_up(self, event):
+        self.scroll._parent_canvas.yview("scroll", -1, "units")
+
+    def on_scroll_down(self, event):
+        self.scroll._parent_canvas.yview("scroll", 1, "units")
+
+    def set_status(self, text, busy=False):
+        self.status_bar.configure(text=text)
+        self.configure(cursor="watch" if busy else "arrow")
+
+    def clear_list(self):
+        for widget in self.scroll.winfo_children(): widget.destroy()
+
+    def check_installed(self, pkg):
+        res = subprocess.run(f"dpkg -s {pkg}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return res.returncode == 0
+
+    def load_featured(self):
+        self.clear_list()
+        ctk.CTkLabel(self.scroll, text="Aanbevolen Apps", font=("Sans", 20, "bold"), anchor="w").pack(fill="x", pady=10)
+        featured = [
+            ("firefox-esr", "Webbrowser"), ("chromium", "Open-source browser"),
+            ("vlc", "Mediaspeler"), ("gimp", "Foto editor"), ("inkscape", "Vector tekenen"),
+            ("libreoffice", "Office pakket"), ("thunderbird", "E-mail"),
+            ("obs-studio", "Opnemen en streamen"), ("telegram-desktop", "Chat app"),
+            ("discord", "Chat voor gamers"), ("steam-installer", "Games"),
+            ("htop", "Taakbeheer"), ("neofetch", "Systeem info"), ("kitty", "Terminal")
+        ]
+        threading.Thread(target=self._load_items_thread, args=(featured,), daemon=True).start()
+
+    def search(self):
+        query = self.search_entry.get().lower().strip()
+        if not query: return
+        self.clear_list()
+        self.set_status(f"Zoeken naar '{query}'...", True)
+        threading.Thread(target=self._search_thread, args=(query,), daemon=True).start()
+
+    def _search_thread(self, query):
+        try:
+            cmd = f"apt-cache search {query}"
+            result = subprocess.check_output(cmd, shell=True).decode()
+            
+            raw_items = []
+            blacklist = ["-dev", "-doc", "-common", "-data", "-help", "-lang", 
+                         "-theme", "-plugin", "lib", "gir1.2", "python3-", "ruby-", "golang-"]
+            
+            for line in result.split('\n'):
+                if " - " not in line: continue
+                parts = line.split(" - ", 1)
+                pkg = parts[0].strip()
+                desc = parts[1].strip()
+
+                if any(bad in pkg for bad in blacklist): continue
+                raw_items.append((pkg, desc))
+
+            def sort_key(item):
+                p_name = item[0]
+                if p_name == query: return 0
+                if p_name.startswith(query): return 1
+                return 2
+
+            raw_items.sort(key=sort_key)
+            final_items = raw_items[:40]
+
+            self.after(0, lambda: self._load_items_ui(final_items))
+        except:
+            self.after(0, lambda: self.set_status("Fout bij zoeken."))
+
+    def _load_items_thread(self, items_list):
+        self.after(0, lambda: self._load_items_ui(items_list))
+
+    def _load_items_ui(self, items_list):
+        self.set_status(f"{len(items_list)} resultaten.")
+        if not items_list:
+            ctk.CTkLabel(self.scroll, text="Geen resultaten gevonden.", font=("Sans", 16)).pack(pady=20)
+            return
+
+        for pkg, desc in items_list:
+            is_inst = self.check_installed(pkg)
+            AppItem(self.scroll, pkg, desc, is_inst, self)
+
+    def run_transaction(self, cmd, item_widget):
+        self.set_status("Wachtwoord invoeren...", True)
+        item_widget.btn.configure(state="disabled", text="...")
+        
+        def thread_task():
+            res = subprocess.run(cmd, shell=True)
+            self.after(0, lambda: self._transaction_done(res.returncode == 0, item_widget))
+
+        threading.Thread(target=thread_task, daemon=True).start()
+
+    def _transaction_done(self, success, item_widget):
+        item_widget.btn.configure(state="normal")
+        if success:
+            new_state = not item_widget.is_installed
+            item_widget.update_state(new_state)
+            self.set_status("Klaar!")
+        else:
+            item_widget.update_state(item_widget.is_installed)
+            self.set_status("Geannuleerd.")
+
+if __name__ == "__main__":
+    app = CanaryStore()
+    app.mainloop()

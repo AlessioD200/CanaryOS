@@ -1,0 +1,29 @@
+# Bureaublad omgeving
+labwc
+waybar
+swaync
+pcmanfm-qt
+lxpolkit
+xwayland
+libxcb-cursor0
+
+# Systeem tools
+psmisc
+curl
+git
+network-manager
+pulseaudio
+pavucontrol
+brightnessctl
+fonts-font-awesome
+
+# Python (voor jouw tools)
+python3-tk
+python3-pil
+python3-pil.imagetk
+
+# Applicaties
+firefox-esr
+neofetch
+htop
+mousepad

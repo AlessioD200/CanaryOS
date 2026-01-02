@@ -1,0 +1,11 @@
+# Zet de achtergrond (vervang path/to/image met een echt bestand, of gebruik een kleur)
+# Start de taakbalk
+waybar &
+# Start notificatie
+swaync &
+# Start agent
+lxpolkit &
+# Start wallpaper,...
+sh -c "sleep 2 && pcmanfm-qt --desktop" &
+# Start netwerk applet (optioneel, als je nm-applet hebt geïnstalleerd)
+# nm-applet --indicator &

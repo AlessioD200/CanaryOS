@@ -1,0 +1,18 @@
+.notification-row {
+    outline: none;
+}
+.notification-row:focus,
+.notification-row:hover {
+    background: #1e1e2e;
+}
+.notification {
+    border-radius: 12px;
+    margin: 6px 12px;
+    box-shadow: 0 0 0 1px #89b4fa; /* Blauwe rand */
+    padding: 0;
+}
+.control-center {
+    background: #1e1e2e;
+    border-radius: 12px;
+    border: 2px solid #89b4fa;
+}

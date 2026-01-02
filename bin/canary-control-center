@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+import customtkinter as ctk
+import subprocess
+import os
+import threading
+import time
+
+# --- CONFIG ---
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+
+# Kleur instellingen
+BG_COLOR = "#1e1e2e"       # Donkere achtergrond
+ACCENT_COLOR = "#89b4fa"   # Blauw
+ACTIVE_COLOR = "#3498db"   # Wifi Aan
+BT_ACTIVE_COLOR = "#9b59b6"# BT Aan
+BTN_COLOR = "#313244"      # Knoppen standaard
+
+RFKILL = "/usr/sbin/rfkill" if os.path.exists("/usr/sbin/rfkill") else "rfkill"
+
+# --- SPINNER KLASSE (Animatie) ---
+class Spinner(ctk.CTkLabel):
+    def __init__(self, parent):
+        super().__init__(parent, text="⣾", font=("Sans", 24), text_color=ACCENT_COLOR)
+        self.running = False
+        self.chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
+        self.idx = 0
+
+    def start(self):
+        if not self.running:
+            self.running = True
+            self.pack(pady=10)
+            self.animate()
+
+    def stop(self):
+        self.running = False
+        self.pack_forget()
+
+    def animate(self):
+        if self.running:
+            self.configure(text=self.chars[self.idx])
+            self.idx = (self.idx + 1) % len(self.chars)
+            self.after(100, self.animate)
+
+class ControlCenter(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.overrideredirect(True)
+        ws, hs = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry(f"380x480+{ws-390}+{hs-530}")
+        self.configure(fg_color=BG_COLOR)
+        
+        self.container = ctk.CTkFrame(self, fg_color=BG_COLOR) # Geen transparent meer
+        self.container.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        self.frames = {}
+        for F in (MainPage, WifiPage, BluetoothPage):
+            page_name = F.__name__
+            frame = F(parent=self.container, controller=self)
+            self.frames[page_name] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+            
+        self.container.grid_columnconfigure(0, weight=1)
+        self.container.grid_rowconfigure(0, weight=1)
+        
+        self.show_frame("MainPage")
+        self.bind("<FocusOut>", self.on_focus_loss)
+        self.focus_force()
+
+    def show_frame(self, page_name):
+        # Stop scans van vorige pagina's
+        if "WifiPage" in self.frames: self.frames["WifiPage"].stop_scan()
+        if "BluetoothPage" in self.frames: self.frames["BluetoothPage"].stop_scan()
+
+        frame = self.frames[page_name]
+        frame.tkraise()
+        
+        # Start nieuwe scan
+        if page_name == "WifiPage": frame.start_scan()
+        if page_name == "BluetoothPage": frame.start_scan()
+        # Als we teruggaan naar Main, update kleuren
+        if page_name == "MainPage": frame.update_colors()
+
+    def on_focus_loss(self, event):
+        if event.widget == self:
+            if "WifiPage" in self.frames: self.frames["WifiPage"].stop_scan()
+            if "BluetoothPage" in self.frames: self.frames["BluetoothPage"].stop_scan()
+            self.destroy()
+
+class MainPage(ctk.CTkFrame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, fg_color=BG_COLOR)
+        self.controller = controller
+        self.grid_columnconfigure((0, 1, 2), weight=1)
+
+        self.btn_wifi = self.mk_btn(0, "", "Wifi", lambda: controller.show_frame("WifiPage"))
+        self.btn_bt = self.mk_btn(1, "", "Bluetooth", lambda: controller.show_frame("BluetoothPage"))
+        self.btn_plane = self.mk_btn(2, "", "Vliegtuig", self.toggle_plane)
+
+        vol_frame = ctk.CTkFrame(self, fg_color=BTN_COLOR, corner_radius=10)
+        vol_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(30, 10))
+        ctk.CTkLabel(vol_frame, text="Volume", font=("Sans", 14, "bold")).pack(anchor="w", padx=10, pady=(5,0))
+        self.vol_slider = ctk.CTkSlider(vol_frame, from_=0, to=100, command=lambda v: subprocess.run(f"pamixer --set-volume {int(v)}", shell=True))
+        self.vol_slider.pack(fill="x", padx=10, pady=10)
+        try: self.vol_slider.set(int(subprocess.check_output("pamixer --get-volume", shell=True)))
+        except: self.vol_slider.set(50)
+
+        ctk.CTkButton(self, text="Alle Instellingen  ⚙", command=self.open_settings, fg_color=BTN_COLOR, height=40).grid(row=2, column=0, columnspan=3, sticky="ew", pady=20)
+        
+        # Direct kleuren updaten
+        self.after(100, self.update_colors)
+
+    def mk_btn(self, col, icon, label, cmd):
+        f = ctk.CTkFrame(self, fg_color="transparent")
+        f.grid(row=0, column=col, pady=10)
+        b = ctk.CTkButton(f, text=icon, font=("Sans", 24), width=70, height=70, corner_radius=20, command=cmd, fg_color=BTN_COLOR)
+        b.pack()
+        ctk.CTkLabel(f, text=label, font=("Sans", 12)).pack(pady=2)
+        return b
+
+    def toggle_plane(self): self.update_colors()
+    def open_settings(self):
+        subprocess.Popen("/usr/local/bin/canary-settings", shell=True)
+        self.controller.destroy()
+    
+    def update_colors(self):
+        try: 
+            w_stat = subprocess.check_output("nmcli radio wifi", shell=True).strip()
+            self.btn_wifi.configure(fg_color=ACTIVE_COLOR if w_stat == b"enabled" else BTN_COLOR)
+        except: pass
+        
+        try:
+            b_out = subprocess.check_output(f"{RFKILL} list bluetooth", shell=True)
+            b_active = b"Soft blocked: yes" not in b_out
+            self.btn_bt.configure(fg_color=BT_ACTIVE_COLOR if b_active else BTN_COLOR)
+        except: pass
+
+class WifiPage(ctk.CTkFrame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, fg_color=BG_COLOR) # FIX: Solid color
+        self.controller = controller
+        self.scanning = False
+        self.last_data = ""
+
+        h = ctk.CTkFrame(self, fg_color="transparent")
+        h.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(h, text="<", width=40, command=lambda: controller.show_frame("MainPage"), fg_color="transparent", border_width=1).pack(side="left")
+        ctk.CTkLabel(h, text="Wifi", font=("Sans", 18, "bold")).pack(side="left", padx=10)
+        self.sw = ctk.CTkSwitch(h, text="", command=self.toggle)
+        self.sw.pack(side="right")
+
+        # Spinner toevoegen
+        self.spinner = Spinner(self)
+
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll.pack(fill="both", expand=True)
+
+    def toggle(self):
+        s = "on" if self.sw.get() == 1 else "off"
+        subprocess.run(f"nmcli radio wifi {s}", shell=True)
+        if s == "on": self.start_scan()
+        else: self.stop_scan()
+
+    def start_scan(self):
+        stat = subprocess.check_output("nmcli radio wifi", shell=True).decode().strip()
+        self.sw.select() if stat == "enabled" else self.sw.deselect()
+        if stat == "enabled":
+            self.scanning = True
+            # Start spinner
+            self.spinner.start()
+            subprocess.Popen("nmcli device wifi rescan", shell=True)
+            self.refresh_loop()
+        else:
+            self.stop_scan()
+
+    def stop_scan(self):
+        self.scanning = False
+        self.spinner.stop() # Stop spinner
+        self.last_data = ""
+        for w in self.scroll.winfo_children(): w.destroy()
+
+    def refresh_loop(self):
+        if not self.scanning: return
+        try:
+            data = subprocess.check_output("nmcli -t -f SSID,SIGNAL device wifi list", shell=True).decode()
+            if data and data != self.last_data:
+                self.spinner.stop() # Stop spinner als we data hebben
+                self.last_data = data
+                for w in self.scroll.winfo_children(): w.destroy()
+                seen = []
+                for line in data.split('\n'):
+                    if ":" not in line: continue
+                    ssid, sig = line.split(':')[:2]
+                    if not ssid or ssid in seen: continue
+                    seen.append(ssid)
+                    
+                    row = ctk.CTkFrame(self.scroll, fg_color=BTN_COLOR)
+                    row.pack(fill="x", pady=2)
+                    ctk.CTkButton(row, text=f"{ssid} ({sig}%)", anchor="w", fg_color="transparent", 
+                                  command=lambda s=ssid: self.connect(s)).pack(fill="x")
+        except: pass
+        self.after(2000, self.refresh_loop)
+
+    def connect(self, ssid):
+        d = ctk.CTkInputDialog(text=f"Wachtwoord voor {ssid}:", title="Wifi")
+        d.attributes("-topmost", True)
+        pwd = d.get_input()
+        if pwd: subprocess.Popen(f"nmcli device wifi connect '{ssid}' password '{pwd}'", shell=True)
+
+class BluetoothPage(ctk.CTkFrame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, fg_color=BG_COLOR) # FIX: Solid color
+        self.controller = controller
+        self.scan_proc = None
+        self.scanning = False
+        self.last_data = ""
+
+        h = ctk.CTkFrame(self, fg_color="transparent")
+        h.pack(fill="x", pady=(0, 10))
+        ctk.CTkButton(h, text="<", width=40, command=lambda: controller.show_frame("MainPage"), fg_color="transparent", border_width=1).pack(side="left")
+        ctk.CTkLabel(h, text="Bluetooth", font=("Sans", 18, "bold")).pack(side="left", padx=10)
+        self.sw = ctk.CTkSwitch(h, text="", command=self.toggle)
+        self.sw.pack(side="right")
+        
+        self.spinner = Spinner(self)
+        self.msg = ctk.CTkLabel(self, text="", text_color="gray")
+        self.msg.pack()
+
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.scroll.pack(fill="both", expand=True)
+
+    def toggle(self):
+        if self.sw.get() == 1:
+            self.msg.configure(text="Inschakelen...")
+            subprocess.run(f"{RFKILL} unblock bluetooth", shell=True)
+            self.after(500, self.step_2)
+        else:
+            subprocess.run(f"{RFKILL} block bluetooth", shell=True)
+            self.stop_scan()
+            self.msg.configure(text="Bluetooth uitgeschakeld")
+
+    def step_2(self):
+        subprocess.run("bluetoothctl power on", shell=True)
+        self.start_scan()
+
+    def start_scan(self):
+        try:
+            stat = subprocess.check_output(f"{RFKILL} list bluetooth", shell=True).decode()
+            if "Soft blocked: yes" in stat:
+                self.sw.deselect()
+                self.msg.configure(text="Bluetooth is uit")
+                return
+            
+            self.sw.select()
+            self.msg.configure(text="")
+            self.spinner.start() # Spinner aan
+            
+            if not self.scan_proc:
+                self.scan_proc = subprocess.Popen(["bluetoothctl", "--timeout", "15", "scan", "on"], stdout=subprocess.DEVNULL)
+            
+            self.scanning = True
+            self.refresh_loop()
+        except: pass
+
+    def stop_scan(self):
+        self.scanning = False
+        self.spinner.stop()
+        self.last_data = ""
+        if self.scan_proc:
+            self.scan_proc.terminate()
+            self.scan_proc = None
+        for w in self.scroll.winfo_children(): w.destroy()
+
+    def refresh_loop(self):
+        if not self.scanning: return
+        try:
+            raw = subprocess.check_output("bluetoothctl devices", shell=True).decode()
+            if raw and raw != self.last_data:
+                self.spinner.stop() # Data gevonden, spinner uit
+                self.last_data = raw
+                for w in self.scroll.winfo_children(): w.destroy()
+                
+                devs = raw.split('\n')
+                for d in devs:
+                    if len(d.split(' ', 2)) < 3: continue
+                    mac = d.split(' ', 2)[1]
+                    name = d.split(' ', 2)[2]
+                    
+                    row = ctk.CTkFrame(self.scroll, fg_color=BTN_COLOR)
+                    row.pack(fill="x", pady=2)
+                    ctk.CTkButton(row, text=f" {name}", anchor="w", fg_color="transparent", 
+                                  command=lambda m=mac: self.pair(m)).pack(fill="x")
+        except: pass
+        self.after(2000, self.refresh_loop)
+
+    def pair(self, mac):
+        subprocess.Popen(f"foot bluetoothctl pair {mac}", shell=True)
+        subprocess.Popen(f"foot bluetoothctl connect {mac}", shell=True)
+
+if __name__ == "__main__":
+    app = ControlCenter()
+    app.mainloop()

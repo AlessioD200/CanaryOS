@@ -1,0 +1,12 @@
+#!/bin/bash
+# Kijk of wofi al draait
+if pgrep -x "wofi" > /dev/null; then
+    # Als hij draait: sluit hem
+    killall wofi
+else
+    # Als hij niet draait: start hem
+    # --show drun = apps zoeken
+    # --allow-images = icoontjes tonen
+    # --insensitive = hoofdletterongevoelig zoeken
+    wofi --show drun --allow-images --insensitive --prompt "Zoeken..."
+fi

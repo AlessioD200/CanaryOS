@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+import customtkinter as ctk
+import subprocess
+import os
+import platform
+import threading
+import psutil
+import shutil
+from tkinter import filedialog
+
+# --- CONFIG ---
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("blue")
+RFKILL = "/usr/sbin/rfkill" if os.path.exists("/usr/sbin/rfkill") else "rfkill"
+
+class CanarySettings(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("CanaryOS Instellingen")
+        self.geometry("1100x750")
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # --- ZIJBALK ---
+        self.sidebar = ctk.CTkFrame(self, width=240, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_rowconfigure(10, weight=1)
+
+        ctk.CTkLabel(self.sidebar, text="CanaryOS", font=ctk.CTkFont(size=26, weight="bold")).grid(row=0, column=0, padx=20, pady=40)
+        
+        self.add_cat("VERBINDINGEN")
+        self.btn_wifi = self.nav_btn("  Netwerk", self.show_wifi, 2)
+        self.btn_bt = self.nav_btn("  Bluetooth", self.show_bluetooth, 3)
+        
+        self.add_cat("APPARAAT", 4)
+        self.btn_disp = self.nav_btn("  Beeldscherm", self.show_display, 5)
+        self.btn_snd = self.nav_btn("  Geluid", self.show_sound, 6)
+        self.btn_mouse = self.nav_btn("  Muis & Touchpad", self.show_mouse, 7)
+        self.btn_power = self.nav_btn("  Energie", self.show_power, 8)
+
+        self.add_cat("PERSOONLIJK", 9)
+        self.btn_wall = self.nav_btn("  Achtergrond", self.show_wallpaper, 10)
+        
+        self.add_cat("SYSTEEM", 11)
+        self.btn_sys = self.nav_btn("  Opslag & Info", self.show_system, 12)
+
+        self.main_area = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.main_area.grid(row=0, column=1, sticky="nsew", padx=40, pady=40)
+
+        # Scan vars
+        self.wifi_scanning = False
+        self.bt_scanning = False
+        self.bt_proc = None
+        self.last_wifi_data = ""
+        self.last_bt_data = ""
+
+        self.show_system() 
+
+    def add_cat(self, text, row=1):
+        ctk.CTkLabel(self.sidebar, text=text, font=ctk.CTkFont(size=12, weight="bold"), text_color="gray").grid(row=row, column=0, sticky="w", padx=20, pady=(20, 5))
+
+    def nav_btn(self, t, c, r):
+        # Gebruik command=lambda om directe uitvoering te voorkomen, maar hier is 'c' al de functie
+        b = ctk.CTkButton(self.sidebar, text=t, command=c, anchor="w", fg_color="transparent", text_color=("gray10", "#DCE4EE"), height=40, font=ctk.CTkFont(size=14))
+        b.grid(row=r, column=0, padx=10, pady=2, sticky="ew")
+        return b
+
+    def clear_main(self):
+        # Stop loops
+        self.wifi_scanning = False
+        self.bt_scanning = False
+        self.last_wifi_data = ""
+        self.last_bt_data = ""
+        
+        if self.bt_proc: 
+            self.bt_proc.terminate()
+            self.bt_proc = None
+            
+        for w in self.main_area.winfo_children(): w.destroy()
+
+    def header(self, t): 
+        ctk.CTkLabel(self.main_area, text=t, font=ctk.CTkFont(size=32, weight="bold")).pack(anchor="w", pady=(0, 30))
+
+    def sub_header(self, t):
+        ctk.CTkLabel(self.main_area, text=t, font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(20, 10))
+
+    # ==========================================
+    # SYSTEEM (THREADED)
+    # ==========================================
+    def show_system(self):
+        self.clear_main()
+        self.header("Systeemoverzicht")
+
+        info_frame = ctk.CTkFrame(self.main_area, fg_color="#2b2c3b")
+        info_frame.pack(fill="x", pady=10)
+        
+        uname = platform.uname()
+        ctk.CTkLabel(info_frame, text=f"Hostname: {uname.node}", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(20, 5))
+        ctk.CTkLabel(info_frame, text=f"Kernel: {uname.release}").pack(anchor="w", padx=20)
+        ctk.CTkLabel(info_frame, text=f"Architectuur: {uname.machine}").pack(anchor="w", padx=20, pady=(0, 20))
+
+        self.sub_header("Opslag")
+        total, used, free = shutil.disk_usage("/")
+        total_gb = total // (2**30)
+        used_gb = used // (2**30)
+        
+        storage_bar = ctk.CTkProgressBar(self.main_area, width=500)
+        storage_bar.pack(fill="x", pady=5)
+        storage_bar.set(used / total)
+        ctk.CTkLabel(self.main_area, text=f"{used_gb} GB gebruikt van {total_gb} GB").pack(anchor="w")
+
+        self.sub_header("Prestaties")
+        self.cpu_bar = ctk.CTkProgressBar(self.main_area)
+        self.cpu_bar.pack(fill="x", pady=5)
+        self.cpu_lbl = ctk.CTkLabel(self.main_area, text="CPU: Laden...")
+        self.cpu_lbl.pack(anchor="w")
+
+        self.ram_bar = ctk.CTkProgressBar(self.main_area)
+        self.ram_bar.pack(fill="x", pady=(20, 5))
+        self.ram_lbl = ctk.CTkLabel(self.main_area, text="RAM: Laden...")
+        self.ram_lbl.pack(anchor="w")
+        
+        # Start background loop
+        self.update_stats_loop()
+
+    def update_stats_loop(self):
+        # Check of widgets nog bestaan
+        if not hasattr(self, 'cpu_bar') or not self.cpu_bar.winfo_exists(): return
+        
+        # Start thread voor zwaar werk
+        threading.Thread(target=self._get_stats_thread, daemon=True).start()
+        
+        # Plan volgende ronde over 3 seconden
+        self.after(3000, self.update_stats_loop)
+
+    def _get_stats_thread(self):
+        # Dit draait op achtergrond en blokkeert de UI niet
+        c = psutil.cpu_percent() / 100
+        r = psutil.virtual_memory().percent / 100
+        # Update UI in main thread
+        self.after(0, lambda: self._update_stats_ui(c, r))
+
+    def _update_stats_ui(self, cpu, ram):
+        if not hasattr(self, 'cpu_bar') or not self.cpu_bar.winfo_exists(): return
+        self.cpu_bar.set(cpu)
+        self.cpu_lbl.configure(text=f"CPU Gebruik: {int(cpu*100)}%")
+        self.ram_bar.set(ram)
+        self.ram_lbl.configure(text=f"RAM Gebruik: {int(ram*100)}%")
+
+    # ==========================================
+    # WIFI (THREADED)
+    # ==========================================
+    def show_wifi(self):
+        self.clear_main()
+        self.header("Netwerk")
+        
+        h = ctk.CTkFrame(self.main_area)
+        h.pack(fill="x", pady=10)
+        ctk.CTkLabel(h, text="Wifi Ingeschakeld", font=ctk.CTkFont(size=16)).pack(side="left", padx=20, pady=20)
+        self.wifi_sw = ctk.CTkSwitch(h, text="", command=self.toggle_wifi)
+        self.wifi_sw.pack(side="right", padx=20)
+
+        self.wifi_scroll = ctk.CTkScrollableFrame(self.main_area, label_text="Beschikbare Netwerken")
+        self.wifi_scroll.pack(fill="both", expand=True)
+        
+        # Check status direct
+        stat = subprocess.check_output("nmcli radio wifi", shell=True).decode().strip()
+        self.wifi_sw.select() if stat == "enabled" else self.wifi_sw.deselect()
+        
+        if stat == "enabled":
+            self.wifi_scanning = True
+            subprocess.Popen("nmcli device wifi rescan", shell=True) 
+            self.wifi_loop()
+
+    def toggle_wifi(self):
+        s = "on" if self.wifi_sw.get() == 1 else "off"
+        # Doe dit in thread zodat knop niet bevriest
+        threading.Thread(target=lambda: subprocess.run(f"nmcli radio wifi {s}", shell=True)).start()
+        
+        if s == "on": 
+            self.wifi_scanning = True
+            self.wifi_loop()
+        else: 
+            self.wifi_scanning = False
+            for w in self.wifi_scroll.winfo_children(): w.destroy()
+
+    def wifi_loop(self):
+        if not self.wifi_scanning: return
+        threading.Thread(target=self._scan_wifi_thread, daemon=True).start()
+        self.after(5000, self.wifi_loop) # Scan elke 5 sec
+
+    def _scan_wifi_thread(self):
+        try:
+            data = subprocess.check_output("nmcli -t -f SSID,SIGNAL device wifi list", shell=True).decode()
+            self.after(0, lambda: self._update_wifi_ui(data))
+        except: pass
+
+    def _update_wifi_ui(self, data):
+        if not self.wifi_scanning or not self.wifi_scroll.winfo_exists(): return
+        if data == self.last_wifi_data: return
+        
+        self.last_wifi_data = data
+        for w in self.wifi_scroll.winfo_children(): w.destroy()
+        seen = []
+        for line in data.split('\n'):
+            if ":" not in line: continue
+            ssid, sig = line.split(':')[:2]
+            if not ssid or ssid in seen: continue
+            seen.append(ssid)
+            
+            row = ctk.CTkFrame(self.wifi_scroll)
+            row.pack(fill="x", pady=5)
+            ctk.CTkLabel(row, text=f"  {ssid}", font=ctk.CTkFont(size=14, weight="bold"), width=300, anchor="w").pack(side="left", padx=20)
+            ctk.CTkLabel(row, text=f"{sig}%").pack(side="left", padx=10)
+            ctk.CTkButton(row, text="Verbind", width=80, command=lambda s=ssid: self.connect_wifi(s)).pack(side="right", padx=20)
+
+    def connect_wifi(self, ssid):
+        d = ctk.CTkInputDialog(text=f"Wachtwoord voor {ssid}:", title="Verbinden")
+        pwd = d.get_input()
+        if pwd: subprocess.Popen(f"nmcli device wifi connect '{ssid}' password '{pwd}'", shell=True)
+
+    # ==========================================
+    # BLUETOOTH (THREADED)
+    # ==========================================
+    def show_bluetooth(self):
+        self.clear_main()
+        self.header("Bluetooth")
+        
+        h = ctk.CTkFrame(self.main_area)
+        h.pack(fill="x", pady=10)
+        ctk.CTkLabel(h, text="Bluetooth", font=ctk.CTkFont(size=16)).pack(side="left", padx=20, pady=20)
+        self.bt_sw = ctk.CTkSwitch(h, text="", command=self.toggle_bt)
+        self.bt_sw.pack(side="right", padx=20)
+
+        self.bt_scroll = ctk.CTkScrollableFrame(self.main_area, label_text="Apparaten")
+        self.bt_scroll.pack(fill="both", expand=True)
+        
+        self.check_bt_status()
+
+    def check_bt_status(self):
+        try:
+            stat = subprocess.check_output(f"{RFKILL} list bluetooth", shell=True).decode()
+            if "Soft blocked: yes" in stat: 
+                self.bt_sw.deselect()
+            else:
+                self.bt_sw.select()
+                if not self.bt_proc:
+                    self.bt_proc = subprocess.Popen(["bluetoothctl", "scan", "on"], stdout=subprocess.DEVNULL)
+                self.bt_scanning = True
+                self.bt_loop()
+        except: pass
+
+    def toggle_bt(self):
+        if self.bt_sw.get() == 1:
+            def turn_on():
+                subprocess.run(f"{RFKILL} unblock bluetooth", shell=True)
+                subprocess.run("bluetoothctl power on", shell=True)
+                self.after(0, lambda: [setattr(self, 'bt_scanning', True), self.bt_loop()])
+            threading.Thread(target=turn_on).start()
+        else:
+            threading.Thread(target=lambda: subprocess.run(f"{RFKILL} block bluetooth", shell=True)).start()
+            self.bt_scanning = False
+            if self.bt_proc: self.bt_proc.terminate()
+            for w in self.bt_scroll.winfo_children(): w.destroy()
+
+    def bt_loop(self):
+        if not self.bt_scanning: return
+        threading.Thread(target=self._scan_bt_thread, daemon=True).start()
+        self.after(5000, self.bt_loop)
+
+    def _scan_bt_thread(self):
+        try:
+            raw = subprocess.check_output("bluetoothctl devices", shell=True).decode()
+            self.after(0, lambda: self._update_bt_ui(raw))
+        except: pass
+
+    def _update_bt_ui(self, raw):
+        if not self.bt_scanning or not self.bt_scroll.winfo_exists(): return
+        if raw == self.last_bt_data: return
+        
+        self.last_bt_data = raw
+        for w in self.bt_scroll.winfo_children(): w.destroy()
+        devs = raw.split('\n')
+        for d in devs:
+            if len(d.split(' ', 2)) < 3: continue
+            mac = d.split(' ', 2)[1]
+            name = d.split(' ', 2)[2]
+            
+            row = ctk.CTkFrame(self.bt_scroll)
+            row.pack(fill="x", pady=5)
+            ctk.CTkLabel(row, text=f"  {name}", anchor="w", width=300).pack(side="left", padx=20)
+            ctk.CTkButton(row, text="Koppel", width=80, command=lambda m=mac: self.pair_bt(m)).pack(side="right", padx=20)
+
+    def pair_bt(self, mac):
+        subprocess.Popen(f"foot bluetoothctl pair {mac}", shell=True)
+        subprocess.Popen(f"foot bluetoothctl connect {mac}", shell=True)
+
+    # ==========================================
+    # OVERIGE
+    # ==========================================
+    def show_display(self):
+        self.clear_main()
+        self.header("Beeldscherm")
+        self.sub_header("Helderheid")
+        s = ctk.CTkSlider(self.main_area, from_=0, to=100, command=lambda v: subprocess.run(f"brightnessctl s {int(v)}%", shell=True))
+        s.set(50)
+        s.pack(fill="x", pady=10)
+        self.sub_header("Resolutie & Schaling")
+        res_opts = ["1920x1080", "1366x768", "1280x720", "3840x2160"]
+        ctk.CTkOptionMenu(self.main_area, values=res_opts, command=self.set_res).pack(anchor="w", padx=20)
+
+    def set_res(self, val):
+        subprocess.Popen(f"wlr-randr --output eDP-1 --mode {val}", shell=True)
+
+    def show_sound(self):
+        self.clear_main()
+        self.header("Geluid")
+        self.sub_header("Uitvoer Volume")
+        s_out = ctk.CTkSlider(self.main_area, from_=0, to=100, command=lambda v: subprocess.run(f"pamixer --set-volume {int(v)}", shell=True))
+        s_out.pack(fill="x", pady=10)
+        ctk.CTkButton(self.main_area, text="Dempen", fg_color="#e74c3c", command=lambda: subprocess.run("pamixer --toggle-mute", shell=True)).pack(anchor="w", pady=5)
+
+    def show_mouse(self):
+        self.clear_main()
+        self.header("Muis & Touchpad")
+        ctk.CTkLabel(self.main_area, text="Instellingen worden beheerd door Labwc config.").pack(anchor="w")
+
+    def show_wallpaper(self):
+        self.clear_main()
+        self.header("Achtergrond")
+        
+        ctk.CTkLabel(self.main_area, text="Om iconen en selectievakjes te behouden,", font=("Sans", 14)).pack(anchor="w", pady=(10,0))
+        ctk.CTkLabel(self.main_area, text="wordt het beheer uitgevoerd door de Desktop Manager.", font=("Sans", 14)).pack(anchor="w", pady=(0,20))
+
+        # Deze knop opent nu de VEILIGE instellingen (pcmanfm) in plaats van swaybg
+        ctk.CTkButton(self.main_area, text="Open Achtergrond Instellingen", height=50, 
+                     command=lambda: subprocess.Popen("pcmanfm-qt --desktop-pref", shell=True)).pack(fill="x", pady=20)
+
+    # De oude 'pick_wall' functie mag weg of laat je staan, hij wordt toch niet meer aangeroepen.
+    def pick_wall(self):
+        p = filedialog.askopenfilename()
+        if p:
+            os.system("killall swaybg")
+            subprocess.Popen(f"swaybg -i '{p}' -m fill &", shell=True)
+
+    def show_power(self):
+        self.clear_main()
+        self.header("Energie")
+        grid = ctk.CTkFrame(self.main_area, fg_color="transparent")
+        grid.pack(fill="x", pady=20)
+        ctk.CTkButton(grid, text="Afsluiten", fg_color="#c0392b", height=60, command=lambda: os.system("systemctl poweroff")).pack(side="left", fill="x", expand=True, padx=5)
+        ctk.CTkButton(grid, text="Herstarten", fg_color="#d35400", height=60, command=lambda: os.system("systemctl reboot")).pack(side="left", fill="x", expand=True, padx=5)
+
+if __name__ == "__main__":
+    app = CanarySettings()
+    app.mainloop()

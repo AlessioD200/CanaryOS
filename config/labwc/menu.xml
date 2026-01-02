@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<labwc_menu>
+    <menu id="root-menu" label="">
+        <item label="⚙  Canary Instellingen">
+            <action name="Execute" command="canary-settings" />
+        </item>
+
+        <item label="  Achtergrond Wijzigen">
+            <action name="Execute" command="canary-settings" />
+        </item>
+
+        <separator />
+
+        <item label="  Terminal">
+            <action name="Execute" command="foot" />
+        </item>
+
+        <item label="  Web Browser">
+            <action name="Execute" command="firefox-esr" />
+        </item>
+
+        <item label="📂  Bestanden">
+            <action name="Execute" command="canary-files" />
+        </item>
+
+        <separator />
+
+        <item label="  Uitloggen">
+            <action name="Exit" />
+        </item>
+
+        <item label="  Herstarten">
+            <action name="Execute" command="systemctl reboot" />
+        </item>
+
+        <item label="  Afsluiten">
+            <action name="Execute" command="systemctl poweroff" />
+        </item>
+    </menu>
+</labwc_menu>

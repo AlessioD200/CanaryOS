@@ -1,0 +1,9 @@
+#!/bin/bash
+# Check of het al draait
+if pgrep -f "python3 /usr/local/bin/canary-control-center" > /dev/null; then
+    # Zo ja: DOOD HET (Sluiten)
+    pkill -f "python3 /usr/local/bin/canary-control-center"
+else
+    # Zo nee: START HET
+    /usr/local/bin/canary-control-center &
+fi

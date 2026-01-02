@@ -1,0 +1,12 @@
+#!/bin/bash
+# CanaryOS Power Menu (Wofi Versie)
+
+OPTS="  Afsluiten\n  Herstarten\n  Uitloggen"
+
+CHOICE=$(echo -e "$OPTS" | wofi --dmenu --prompt "Power" --width 250 --height 200 --location bottom_right --x -10 --y -50 --style ~/.config/wofi/style.css --cache-file /dev/null)
+
+case "$CHOICE" in
+    *Afsluiten) systemctl poweroff ;;
+    *Herstarten) systemctl reboot ;;
+    *Uitloggen) loginctl terminate-user $USER ;;
+esac
