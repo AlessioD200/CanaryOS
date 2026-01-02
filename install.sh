@@ -112,5 +112,19 @@ deploy_config "$REAL_HOME/.config" "$REAL_USER:$REAL_USER"
 echo "🐍 Python bibliotheken installeren..."
 # We gebruiken --break-system-packages omdat dit jouw eigen OS is
 pip3 install customtkinter --break-system-packages --quiet
+#hmm
+
+# === FONTS FIX (NERD FONTS) ===
+echo "🅰️  Nerd Fonts installeren (voor de logo's)..."
+mkdir -p /usr/local/share/fonts
+
+# Downloaden als hij er nog niet is
+if [ ! -f /usr/local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf ]; then
+    wget -qO /usr/local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/JetBrainsMono/Ligatures/Regular/JetBrainsMonoNerdFont-Regular.ttf
+    wget -qO /usr/local/share/fonts/JetBrainsMonoNerdFont-Bold.ttf https://github.com/ryanoasis/nerd-fonts/raw/master/patched-fonts/JetBrainsMono/Ligatures/Bold/JetBrainsMonoNerdFont-Bold.ttf
+fi
+
+# Font cache verversen (HEEL BELANGRIJK)
 fc-cache -f -v
+
 echo "✅ Klaar! Herstart Labwc of de PC."
