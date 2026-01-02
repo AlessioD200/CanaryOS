@@ -58,14 +58,17 @@ cp bin/canary-* /usr/local/bin/
 chmod +x /usr/local/bin/canary-*
 
 # 3. ASSETS (Plaatjes & Thema's) - VOOR IEDEREEN
+# ... in install.sh bij stap 3 Assets ...
 echo "🎨 Assets plaatsen..."
-# Maak de algemene map
-mkdir -p /usr/local/share/canaryos
-# Kopieer alles uit jouw assets map naar de systeem map
-cp -r assets/* /usr/local/share/canaryos/
-# Zorg dat iedereen ze mag lezen
-chmod -R 755 /usr/local/share/canaryos
 
+# Check of de map wel bestaat in de git repo
+if [ -d "assets" ]; then
+    mkdir -p /usr/local/share/canaryos
+    cp -r assets/* /usr/local/share/canaryos/
+    chmod -R 755 /usr/local/share/canaryos
+else
+    echo "⚠️  Let op: Map 'assets' niet gevonden in de download. Sla ik over."
+fi
 # Thema (als je die hebt in assets/themes)
 # mkdir -p /usr/share/themes
 # cp -r assets/themes/* /usr/share/themes/ 2>/dev/null
