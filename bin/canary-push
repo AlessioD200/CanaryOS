@@ -1,0 +1,37 @@
+#!/bin/bash
+echo "=== 📤 CanaryOS Verzenden ==="
+
+# Map bepalen
+REPO_DIR="$HOME/CanaryOS"
+cd "$REPO_DIR" || exit
+
+echo "-> Jouw lokale wijzigingen worden verzameld..."
+
+# 1. Configs kopiëren VAN pc NAAR repo
+rsync -av --delete ~/.config/labwc/ config/labwc/
+rsync -av --delete ~/.config/waybar/ config/waybar/
+rsync -av --delete ~/.config/swaync/ config/swaync/
+rsync -av --delete ~/.config/pcmanfm-qt/ config/pcmanfm-qt/
+
+# 2. Scripts kopiëren
+cp /usr/local/bin/canary-* bin/
+
+# 3. Uploaden
+echo "-> Controleren op wijzigingen..."
+git add .
+
+# Check of er wel iets veranderd is
+if git diff-index --quiet HEAD --; then
+    echo "Geen wijzigingen gevonden om te versturen."
+    exit 0
+fi
+
+echo "Wat heb je veranderd? (Kort bericht):"
+read COMMIT_MSG
+
+git commit -m "$COMMIT_MSG"
+
+echo "-> Bezig met uploaden naar GitHub..."
+git push
+
+echo "✅ Gelukt! Je wijzigingen staan online."
