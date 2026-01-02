@@ -67,15 +67,24 @@ chmod +x /usr/local/bin/canary-*
 
 # 3. ASSETS (Plaatjes & Thema's) - VOOR IEDEREEN
 # ... in install.sh bij stap 3 Assets ...
+# 3. ASSETS (Plaatjes & Thema's) - ROBUUSTE VERSIE
 echo "🎨 Assets plaatsen..."
 
-# Check of de map wel bestaat in de git repo
-if [ -d "assets" ]; then
-    mkdir -p /usr/local/share/canaryos
-    cp -r assets/* /usr/local/share/canaryos/
+# Bestemmingsmap maken (altijd veilig)
+mkdir -p /usr/local/share/canaryos
+
+# We checken of de bronmap 'assets' bestaat EN of hij bestanden bevat
+if [ -d "assets" ] && [ "$(ls -A assets)" ]; then
+    # We gebruiken een punt (.) om ALLES te kopiëren (ook verborgen bestanden)
+    cp -r assets/. /usr/local/share/canaryos/ 2>/dev/null
+    
+    # Rechten goedzetten
     chmod -R 755 /usr/local/share/canaryos
+    echo "✅ Assets zijn gekopieerd."
 else
-    echo "⚠️  Let op: Map 'assets' niet gevonden in de download. Sla ik over."
+    echo "⚠️  Waarschuwing: Geen bestanden gevonden in map 'assets'. Sla ik over."
+    # We maken een leeg bestandje zodat de map niet leeg blijft (voorkomt crashes)
+    touch /usr/local/share/canaryos/.installed
 fi
 # Thema (als je die hebt in assets/themes)
 # mkdir -p /usr/share/themes
