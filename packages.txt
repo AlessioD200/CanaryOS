@@ -1,7 +1,6 @@
 # Bureaublad omgeving
 labwc
 waybar
-swaync
 pcmanfm-qt
 lxpolkit
 xwayland
@@ -24,6 +23,6 @@ python3-pil.imagetk
 
 # Applicaties
 firefox-esr
-neofetch
+screenfetch
 htop
 mousepad
