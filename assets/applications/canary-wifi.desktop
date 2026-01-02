@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Canary Wifi
+Exec=canary-wifi
+Icon=network-wireless
+Categories=System;Settings;
