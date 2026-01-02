@@ -17,12 +17,16 @@ git
 network-manager
 pulseaudio
 pavucontrol
-
+fonts-font-awesome
 # Python (Voor je launcher)
 python3-tk
 python3-pil
 python3-pil.imagetk
-
+python3-pip
+rfkill
+pamixer
+bluez
+bluez-tools
 # Apps
 firefox-esr
 screenfetch

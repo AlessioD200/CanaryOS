@@ -107,4 +107,10 @@ deploy_config "/etc/skel/.config" "root:root"
 # B. Voor huidige gebruiker
 deploy_config "$REAL_HOME/.config" "$REAL_USER:$REAL_USER"
 
+#install stuff
+
+echo "🐍 Python bibliotheken installeren..."
+# We gebruiken --break-system-packages omdat dit jouw eigen OS is
+pip3 install customtkinter --break-system-packages --quiet
+fc-cache -f -v
 echo "✅ Klaar! Herstart Labwc of de PC."

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Control Center
+# HIER ZAT DE FOUT: Het moet matchen met je bestandsnaam in /bin
+Exec=canary-control-center
+Icon=preferences-system
+Categories=Settings;System;
