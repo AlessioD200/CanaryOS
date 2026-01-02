@@ -19,23 +19,32 @@ apt update -qq
 grep -v '^#' packages.txt | xargs apt install -y
 
 # SwayNC apart (zit niet in Debian)
-# SwayNC (Notificaties) - FIX MET CURL
+# SwayNC (Notificaties) - AUTO UPDATE VERSIE
 if ! command -v swaync &> /dev/null; then
-    echo "📥 SwayNC wordt gedownload..."
+    echo "📥 SwayNC: Laatste versie zoeken..."
     
-    # 1. Verwijder oude rommel
+    # 1. Oude rommel opruimen
     rm -f swaync.deb
     
-    # 2. Download met curl en volg redirects (-L)
-    # Dit is veiliger dan wget voor GitHub links
-    curl -L -o swaync.deb https://github.com/ErikReider/SwayNotificationCenter/releases/download/v0.12.3/swaync_0.12.3_amd64.deb
+    # 2. Haal de URL van de allerlaatste release op via de GitHub API
+    # Dit is veel veiliger dan een vaste link typen
+    DOWNLOAD_URL=$(curl -s https://api.github.com/repos/ErikReider/SwayNotificationCenter/releases/latest | grep "browser_download_url.*amd64.deb" | cut -d : -f 2,3 | tr -d \")
     
-    # 3. Check of het bestand groter is dan 0 bytes
-    if [ -s swaync.deb ]; then
-        echo "✅ Download gelukt, installeren..."
-        apt install -y ./swaync.deb
+    if [ -z "$DOWNLOAD_URL" ]; then
+        echo "❌ Fout: Kon de download link niet vinden."
     else
-        echo "❌ Fout: SwayNC download mislukt (bestand is leeg)."
+        echo "📥 Downloaden van: $DOWNLOAD_URL"
+        wget -O swaync.deb "$DOWNLOAD_URL"
+        
+        # 3. Check of het bestand echt een Debian archief is
+        if dpkg-deb -I swaync.deb &> /dev/null; then
+            echo "✅ Bestand is geldig. Installeren..."
+            apt install -y ./swaync.deb
+        else
+            echo "❌ Fout: Gedownload bestand is corrupt (waarschijnlijk een HTML pagina)."
+            echo "   Inhoud van bestand:"
+            head -n 5 swaync.deb
+        fi
     fi
     
     # 4. Opruimen
